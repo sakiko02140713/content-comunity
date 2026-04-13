@@ -1,0 +1,13 @@
+# 环境变量文件（包含敏感信息）
+.env
+
+# IDE 配置
+.vscode/
+.idea/
+
+# 临时文件
+tmp/
+*.log
+
+# Docker 数据卷
+mysql_data/
