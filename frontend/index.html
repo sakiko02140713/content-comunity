@@ -1,0 +1,903 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能内容社区 · 并行计算与AI应用</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+</head>
+<body>
+<div id="app">
+
+    <!-- ============================ 顶部导航 ============================ -->
+    <header class="forum-header">
+        <div class="header-inner">
+            <div class="brand" @click="go('/')">
+                <div class="brand-mark">∥</div>
+                <div class="brand-text">
+                    <span class="brand-name">智能内容社区</span>
+                    <span class="brand-slogan">并行计算与AI应用 · UGC内容审核</span>
+                </div>
+            </div>
+
+            <nav class="main-nav">
+                <a @click="go('/')" :class="{ active: route.name === 'home' }">论坛首页</a>
+                <a @click="go('/latest')" :class="{ active: route.name === 'latest' }">最新帖子</a>
+                <a @click="go('/hot')" :class="{ active: route.name === 'hot' }">热门</a>
+                <a @click="go('/essence')" :class="{ active: route.name === 'essence' }">精华</a>
+            </nav>
+
+            <div class="header-search">
+                <input v-model="search.keyword" placeholder="搜索帖子…"
+                       @keyup.enter="doSearch">
+            </div>
+
+            <div class="header-actions">
+                <button class="btn-new-thread" @click="go('/compose')">✏️ 发帖</button>
+                <template v-if="token">
+                    <div class="user-chip" @click="go('/me')">
+                        <span class="avatar sm" :style="avatarStyle(me)">{{ initial(me) }}</span>
+                        <span style="font-size:13.5px;font-weight:600;">{{ me.nickname || me.username }}</span>
+                    </div>
+                    <button class="link-btn" @click="go('/audit-lab')" title="并行审核实验室">⚡</button>
+                    <button class="link-btn" @click="logout">退出</button>
+                </template>
+                <template v-else>
+                    <button class="link-btn" @click="go('/login')">登录</button>
+                    <button class="btn-new-thread" @click="go('/login')">注册</button>
+                </template>
+            </div>
+        </div>
+    </header>
+
+    <!-- ============================ 论坛首页 ============================ -->
+    <div class="layout" v-if="route.name === 'home'">
+        <div class="col-main">
+            <div class="hero-banner">
+                <h1>并行计算与AI应用 · 面向UGC社区的智能内容审核与发布系统</h1>
+                <p>发帖即审核：规则引擎与大模型多个审核维度同时开工，加权聚合后给出可解释的审核结论。
+                   审核通过自动发布，疑似违规转人工复核。</p>
+                <div class="hero-actions">
+                    <button class="btn-hero-primary" @click="go('/compose')">✏️ 发布新帖</button>
+                    <button class="btn-hero-ghost" @click="go('/audit-lab')">⚡ 体验并行审核</button>
+                </div>
+                <div class="hero-stats" v-if="overview.stats">
+                    <div class="hero-stat"><b>{{ overview.stats.threads }}</b><span>主题帖</span></div>
+                    <div class="hero-stat"><b>{{ overview.stats.replies }}</b><span>回复</span></div>
+                    <div class="hero-stat"><b>{{ overview.stats.members }}</b><span>社区成员</span></div>
+                    <div class="hero-stat"><b>{{ overview.stats.today_posts }}</b><span>今日新帖</span></div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head">
+                    <div class="panel-title">📋 版块列表</div>
+                    <span class="mini-meta" v-if="overview.elapsed_ms">
+                        并行聚合 4 个子任务 · {{ overview.elapsed_ms }}ms · 加速比 {{ overview.speedup }}x
+                    </span>
+                </div>
+                <div class="panel-body flush">
+                    <div v-if="!overview.boards || !overview.boards.length" class="empty">暂无版块</div>
+                    <div v-for="b in overview.boards" :key="b.id" class="board-row" @click="go('/b/' + b.slug)">
+                        <div class="board-icon">{{ b.icon }}</div>
+                        <div class="board-info">
+                            <div class="board-name">{{ b.name }}</div>
+                            <div class="board-desc">{{ b.description }}</div>
+                        </div>
+                        <div class="board-nums">
+                            <div class="board-num"><b>{{ b.thread_count }}</b><span>主题</span></div>
+                            <div class="board-num"><b>{{ b.reply_count }}</b><span>回复</span></div>
+                            <div class="board-num"><b :style="{color: b.today_count ? '#10b981' : ''}">{{ b.today_count }}</b><span>今日</span></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head">
+                    <div class="panel-title">🔥 最新主题</div>
+                    <a @click="go('/latest')" style="font-size:13px;">查看全部 →</a>
+                </div>
+                <div class="panel-body flush">
+                    <thread-row v-for="t in overview.latest" :key="t.id" :thread="t"
+                                @open="openThread" @board="goBoard"></thread-row>
+                    <div v-if="!overview.latest || !overview.latest.length" class="empty">
+                        <span class="empty-icon">📭</span>还没有帖子，来发第一帖吧
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <aside class="col-side">
+            <div class="side-card" v-if="token">
+                <div class="side-body">
+                    <div class="me-card">
+                        <span class="avatar lg" :style="avatarStyle(me)">{{ initial(me) }}</span>
+                        <div>
+                            <div class="me-name">{{ me.nickname || me.username }}</div>
+                            <div class="me-sub">{{ me.role === 'admin' ? '社区审核员' : '社区成员' }}</div>
+                        </div>
+                    </div>
+                    <div class="me-stats">
+                        <div class="me-stat"><b>{{ myStats.threads }}</b><span>发帖</span></div>
+                        <div class="me-stat"><b>{{ myStats.replies }}</b><span>回复</span></div>
+                        <div class="me-stat"><b>{{ myStats.likes }}</b><span>获赞</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="side-card">
+                <div class="side-head">🔥 热门讨论</div>
+                <div class="hot-list">
+                    <div v-for="(t, i) in overview.hot" :key="t.id" class="hot-item" @click="openThread(t.id)">
+                        <span class="hot-rank" :class="{ top: i < 3 }">{{ i + 1 }}</span>
+                        <span>{{ t.title }}</span>
+                    </div>
+                    <div v-if="!overview.hot || !overview.hot.length" class="empty" style="padding:20px;">暂无数据</div>
+                </div>
+            </div>
+
+            <div class="side-card">
+                <div class="side-head">📊 社区数据</div>
+                <div class="side-body">
+                    <div class="site-stats" v-if="overview.stats">
+                        <div class="site-stat"><b>{{ overview.stats.threads }}</b><span>主题帖</span></div>
+                        <div class="site-stat"><b>{{ overview.stats.replies }}</b><span>回复</span></div>
+                        <div class="site-stat"><b>{{ overview.stats.members }}</b><span>成员</span></div>
+                        <div class="site-stat"><b>{{ overview.stats.today_posts }}</b><span>今日新帖</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="side-card">
+                <div class="side-head">⚡ 审核引擎</div>
+                <div class="side-body">
+                    <div class="audit-mini" v-if="auditInfo.rule_count">
+                        规则 <b>{{ auditInfo.rule_count }}</b> 条 / 正则 <b>{{ auditInfo.rule_patterns }}</b> 条<br>
+                        语义维度 <b>{{ (auditInfo.dimensions || []).length }}</b> 个（并行）<br>
+                        并行度上限 <b>{{ auditInfo.max_parallel }}</b><br>
+                        <template v-if="auditInsight.total_audits">
+                            平均加速比 <b>{{ auditInsight.avg_speedup }}x</b><br>
+                            累计审核 <b>{{ auditInsight.total_audits }}</b> 次
+                        </template>
+                    </div>
+                    <a @click="go('/audit-lab')" style="font-size:12.5px;">进入并行审核实验室 →</a>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- ==================== 帖子列表（版块 / 最新 / 热门 / 精华 / 搜索）==================== -->
+    <div class="layout" v-if="route.name === 'list'">
+        <div class="col-main">
+            <div class="panel">
+                <div class="board-bar">
+                    <span class="crumb">版块：</span>
+                    <a @click="go('/latest')" :class="{ active: !route.board }">全部</a>
+                    <a v-for="b in boards" :key="b.id" @click="goBoard(b.slug)"
+                       :class="{ active: route.board === b.slug }">{{ b.icon }} {{ b.name }}</a>
+                </div>
+                <div class="thread-toolbar">
+                    <div class="sort-tabs">
+                        <a v-for="s in sortOptions" :key="s.key" @click="changeSort(s.key)"
+                           :class="{ active: list.sort === s.key }">{{ s.label }}</a>
+                    </div>
+                    <div class="toolbar-right">
+                        <template v-if="search.keyword">搜索“{{ search.keyword }}” · </template>
+                        共 {{ list.total }} 个主题
+                    </div>
+                </div>
+                <div class="panel-body flush">
+                    <div v-if="list.loading" class="empty">加载中…</div>
+                    <template v-else>
+                        <thread-row v-for="t in list.items" :key="t.id" :thread="t"
+                                    @open="openThread" @board="goBoard"></thread-row>
+                        <div v-if="!list.items.length" class="empty">
+                            <span class="empty-icon">🔍</span>没有找到帖子
+                        </div>
+                    </template>
+                </div>
+                <div class="pager" v-if="list.total > list.size">
+                    <button :disabled="list.page <= 1" @click="loadList(list.page - 1)">上一页</button>
+                    <span>{{ list.page }} / {{ Math.ceil(list.total / list.size) }}</span>
+                    <button :disabled="list.page >= Math.ceil(list.total / list.size)" @click="loadList(list.page + 1)">下一页</button>
+                </div>
+            </div>
+        </div>
+
+        <aside class="col-side">
+            <div class="side-card">
+                <div class="side-head">🔥 热门讨论</div>
+                <div class="hot-list">
+                    <div v-for="(t, i) in overview.hot" :key="t.id" class="hot-item" @click="openThread(t.id)">
+                        <span class="hot-rank" :class="{ top: i < 3 }">{{ i + 1 }}</span>
+                        <span>{{ t.title }}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="side-card">
+                <div class="side-head">📋 版块导航</div>
+                <div class="hot-list">
+                    <div v-for="b in boards" :key="b.id" class="hot-item" @click="goBoard(b.slug)">
+                        <span>{{ b.icon }}</span><span>{{ b.name }}</span>
+                        <span style="margin-left:auto;color:#9ca3af;font-size:12px;">{{ b.thread_count }}</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- ============================ 帖子详情 ============================ -->
+    <div class="layout" v-if="route.name === 'thread'">
+        <div class="col-main">
+            <div class="panel" v-if="thread.id">
+                <div class="board-bar">
+                    <span class="crumb">当前位置：</span>
+                    <a @click="go('/')">论坛首页</a>
+                    <span class="crumb">›</span>
+                    <a v-if="thread.board" @click="goBoard(thread.board.slug)">{{ thread.board.icon }} {{ thread.board.name }}</a>
+                    <span class="crumb">›</span>
+                    <span style="color:#6b7280;">正文</span>
+                </div>
+
+                <div class="post-head">
+                    <h1 class="post-title">
+                        <span v-if="thread.pinned" class="badge-pin">置顶</span>
+                        <span v-if="thread.featured" class="badge-ess">精华</span>
+                        {{ thread.title }}
+                    </h1>
+                    <div class="post-meta">
+                        <span class="avatar sm" :style="avatarStyle(thread.author)">{{ initial(thread.author) }}</span>
+                        <a @click="goUser(thread.author_id)" class="author" style="font-weight:600;">
+                            {{ authorName(thread.author) }}
+                        </a>
+                        <span>发表于 {{ formatTime(thread.created_at) }}</span>
+                        <span>👁️ {{ thread.view_count }} 阅读</span>
+                        <span>💬 {{ thread.reply_count }} 回复</span>
+                        <span v-for="t in splitTags(thread.tags)" :key="t" class="tag-chip">{{ t }}</span>
+                    </div>
+                </div>
+
+                <div class="post-audit-note" v-if="thread.audit_status === 'pass'">
+                    ✅ 本帖已通过 AI 并行审核
+                    <span v-if="thread.audit_latency_ms">（审核耗时 {{ thread.audit_latency_ms }}ms）</span>
+                    <span v-if="thread.audit_score !== undefined">· 风险分 {{ thread.audit_score }}</span>
+                </div>
+
+                <div class="post-body">{{ thread.content }}</div>
+
+                <div v-if="thread.summary" class="ai-result-box" style="margin:0 20px 16px;">
+                    <div class="ai-label">🤖 AI 摘要（Map-Reduce 并行生成）</div>
+                    <div class="ai-content">{{ thread.summary }}</div>
+                </div>
+
+                <div class="post-actions">
+                    <button class="action-btn" :class="{ liked: thread.liked }" @click="toggleLike('article', thread)">
+                        {{ thread.liked ? '❤️' : '🤍' }} 点赞 {{ thread.like_count }}
+                    </button>
+                    <button class="action-btn" @click="focusReply">💬 回复</button>
+                    <button class="action-btn" @click="summarize(thread)" :disabled="summarizing">
+                        🤖 {{ summarizing ? '并行总结中…' : 'AI 总结' }}
+                    </button>
+                    <template v-if="canEdit(thread)">
+                        <button class="action-btn" @click="editThread(thread)">✏️ 编辑</button>
+                        <button class="action-btn" @click="removeThread(thread)">🗑️ 删除</button>
+                    </template>
+                    <template v-if="isAdmin">
+                        <button class="action-btn" @click="toggleFlag(thread, 'pinned')">
+                            {{ thread.pinned ? '取消置顶' : '📌 置顶' }}
+                        </button>
+                        <button class="action-btn" @click="toggleFlag(thread, 'featured')">
+                            {{ thread.featured ? '取消精华' : '⭐ 加精' }}
+                        </button>
+                    </template>
+                </div>
+            </div>
+
+            <!-- 回复区 -->
+            <div class="panel">
+                <div class="reply-section-head">
+                    <div class="reply-count-title">全部回复（{{ replies.total }}）</div>
+                    <span class="mini-meta">回复同样经过 AI 并行审核</span>
+                </div>
+
+                <div class="panel-body flush">
+                    <div v-if="!replies.items.length" class="empty">
+                        <span class="empty-icon">💬</span>还没有人回复，来抢沙发
+                    </div>
+                    <div v-for="node in replies.items" :key="node.reply.id" class="floor">
+                        <div class="floor-side">
+                            <span class="avatar lg" :style="avatarStyle(node.reply.author)">{{ initial(node.reply.author) }}</span>
+                            <div class="floor-author" @click="goUser(node.reply.author_id)">
+                                {{ authorName(node.reply.author) }}
+                            </div>
+                            <div class="floor-role">{{ node.reply.audit_status === 'review' ? '⚠️ 待复核' : '社区成员' }}</div>
+                        </div>
+                        <div class="floor-main">
+                            <div class="floor-bar">
+                                <span class="floor-num">{{ node.reply.floor }} 楼</span>
+                                <span>{{ formatTime(node.reply.created_at) }}</span>
+                                <span v-if="node.reply.audit_status === 'pass'" class="badge-audit">已通过审核</span>
+                                <span v-else-if="node.reply.audit_status === 'review'" class="pill review tiny">疑似违规待复核</span>
+                            </div>
+                            <div class="floor-content">{{ node.reply.content }}</div>
+                            <div class="floor-actions">
+                                <button :class="{ liked: node.reply.liked }" @click="toggleLike('reply', node.reply)">
+                                    {{ node.reply.liked ? '❤️' : '🤍' }} {{ node.reply.like_count }}
+                                </button>
+                                <button @click="quote(node.reply)">💬 回复</button>
+                                <button v-if="canEdit(node.reply)" @click="removeReply(node.reply)">删除</button>
+                            </div>
+
+                            <div v-if="node.children && node.children.length" class="sub-replies">
+                                <div v-for="c in node.children" :key="c.id" class="sub-reply">
+                                    <span class="avatar sm" :style="avatarStyle(c.author)">{{ initial(c.author) }}</span>
+                                    <div class="sub-reply-body">
+                                        <a class="sub-reply-name" @click="goUser(c.author ? c.author.id : 0)">
+                                            {{ authorName(c.author) }}
+                                        </a>
+                                        <span style="color:#9ca3af;font-size:11.5px;margin-left:6px;">{{ formatTime(c.created_at) }}</span>
+                                        <div>{{ c.content }}</div>
+                                    </div>
+                                    <button class="link-btn" :class="{ liked: c.liked }" @click="toggleLike('reply', c)"
+                                            style="padding:2px 6px;font-size:12px;">
+                                        {{ c.liked ? '❤️' : '🤍' }} {{ c.like_count }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pager" v-if="replies.total > replies.size">
+                    <button :disabled="replies.page <= 1" @click="loadReplies(replies.page - 1)">上一页</button>
+                    <span>{{ replies.page }} / {{ Math.ceil(replies.total / replies.size) }}</span>
+                    <button :disabled="replies.page >= Math.ceil(replies.total / replies.size)" @click="loadReplies(replies.page + 1)">下一页</button>
+                </div>
+
+                <!-- 回复编辑器 -->
+                <div class="reply-editor" ref="replyBox" v-if="token">
+                    <div v-if="replyForm.parent" class="quoting">
+                        引用 {{ replyForm.parentFloor }} 楼 @{{ authorName(replyForm.parentAuthor) }}
+                        <button @click="cancelQuote">取消</button>
+                    </div>
+                    <textarea v-model="replyForm.content" placeholder="写下你的回复…（提交时会经过 AI 并行审核）"></textarea>
+                    <div class="reply-editor-foot">
+                        <span class="reply-tip">违规回复会被自动拦截，疑似内容将标记待人工复核</span>
+                        <button class="btn btn-primary" @click="submitReply" :disabled="replyLoading">
+                            {{ replyLoading ? 'AI 审核中…' : '发表回复' }}
+                        </button>
+                    </div>
+                    <div :class="'alert alert-' + replyMsg.type" v-if="replyMsg.text">{{ replyMsg.text }}</div>
+                    <div v-if="replyAudit" class="parallel-note">
+                        ⚡ 本条回复审核：{{ verdictText(replyAudit.verdict) }} · 风险分 {{ replyAudit.risk_score }} ·
+                        实际 {{ replyAudit.elapsed_ms }}ms / 串行等价 {{ replyAudit.sequential_ms }}ms ·
+                        加速比 {{ replyAudit.speedup }}x · 并行度 {{ replyAudit.peak_concurrency }}
+                    </div>
+                </div>
+                <div class="reply-editor" v-else>
+                    <div class="alert alert-info" style="margin:0;">
+                        请先 <a @click="go('/login')">登录</a> 后参与回复
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <aside class="col-side">
+            <div class="side-card" v-if="thread.author">
+                <div class="side-head">关于楼主</div>
+                <div class="side-body">
+                    <div class="me-card">
+                        <span class="avatar lg" :style="avatarStyle(thread.author)">{{ initial(thread.author) }}</span>
+                        <div>
+                            <div class="me-name">{{ authorName(thread.author) }}</div>
+                            <div class="me-sub">发帖 {{ authorStats.thread_count || 0 }} · 回复 {{ authorStats.reply_count || 0 }}</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-ghost btn-sm btn-block" style="margin-top:12px;"
+                            @click="goUser(thread.author_id)">查看主页</button>
+                </div>
+            </div>
+            <div class="side-card">
+                <div class="side-head">🔥 热门讨论</div>
+                <div class="hot-list">
+                    <div v-for="(t, i) in overview.hot" :key="t.id" class="hot-item" @click="openThread(t.id)">
+                        <span class="hot-rank" :class="{ top: i < 3 }">{{ i + 1 }}</span>
+                        <span>{{ t.title }}</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- ============================ 发帖 / 编辑 ============================ -->
+    <div class="layout single" v-if="route.name === 'compose'">
+        <div class="col-main" v-if="!token">
+            <div class="panel">
+                <div class="empty">
+                    <span class="empty-icon">🔒</span>
+                    发帖需要先登录<br><br>
+                    <button class="btn btn-primary" @click="go('/login')">去登录</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-main" v-else>
+            <div class="panel">
+                <div class="panel-head">
+                    <div class="panel-title">{{ compose.id ? '✏️ 编辑帖子' : '✏️ 发布新帖' }}</div>
+                    <span class="pill" v-if="compose.id">{{ statusText(compose.status) }}</span>
+                </div>
+                <div class="panel-body">
+                    <div class="field">
+                        <label>选择版块</label>
+                        <select v-model="compose.board">
+                            <option v-for="b in boards" :key="b.id" :value="b.slug">{{ b.icon }} {{ b.name }}</option>
+                        </select>
+                    </div>
+                    <div class="field field-title">
+                        <label>标题</label>
+                        <input type="text" v-model="compose.title" placeholder="一句话说清你要讨论的内容" maxlength="200">
+                    </div>
+                    <div class="field">
+                        <label>正文</label>
+                        <textarea v-model="compose.content" rows="14"
+                                  placeholder="支持多段文字。写完后点「提交审核并发布」，系统会并行跑完规则与多维度语义审核。"></textarea>
+                    </div>
+                    <div class="field">
+                        <label>标签（可选，逗号分隔）</label>
+                        <input type="text" v-model="compose.tags" placeholder="例如：Go,并发,性能优化">
+                    </div>
+
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                        <button class="btn btn-primary" @click="submitPost" :disabled="composeLoading">
+                            {{ composeLoading ? '并行审核中…' : '🚀 提交审核并发布' }}
+                        </button>
+                        <button class="btn btn-ghost" @click="saveDraft" :disabled="draftLoading">
+                            {{ draftLoading ? '保存中…' : '💾 存为草稿' }}
+                        </button>
+                        <button class="btn btn-ai" @click="aiWrite" :disabled="aiWriting">
+                            🤖 {{ aiWriting ? 'AI 生成中…' : 'AI 帮我写' }}
+                        </button>
+                        <button class="btn btn-ghost" @click="go('/')">取消</button>
+                    </div>
+                    <div class="field-hint" v-if="!compose.id">
+                        提示：可以直接提交，审核通过后会自动发布（同时保存为草稿以便后续编辑）。
+                    </div>
+                    <div :class="'alert alert-' + composeMsg.type" v-if="composeMsg.text">{{ composeMsg.text }}</div>
+                </div>
+            </div>
+
+            <div class="panel" v-if="liveEvents.length || liveAudit.result">
+                <div class="panel-head">
+                    <div class="panel-title">⚡ 并行审核实时过程</div>
+                    <span class="pill" v-if="liveAudit.running">运行中 {{ liveAudit.elapsed }}ms</span>
+                </div>
+                <div class="panel-body">
+                    <div class="timeline" v-if="liveEvents.length">
+                        <div v-for="(ev, i) in liveEvents" :key="i" class="timeline-item" :class="ev.state">
+                            <span class="timeline-time">{{ ev.elapsed_ms }}ms</span>
+                            <span class="timeline-msg">{{ ev.message }}</span>
+                        </div>
+                    </div>
+                    <audit-result v-if="liveAudit.result" :result="liveAudit.result"></audit-result>
+                </div>
+            </div>
+
+            <div class="panel" v-if="aiDraft">
+                <div class="panel-head"><div class="panel-title">🤖 AI 生成结果</div></div>
+                <div class="panel-body">
+                    <div class="ai-content" style="max-height:340px;">{{ aiDraft }}</div>
+                    <button class="btn btn-primary btn-sm" style="margin-top:12px;" @click="useAiDraft">填入正文</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================ 个人主页 ============================ -->
+    <div class="layout" v-if="route.name === 'user'">
+        <div class="col-main">
+            <div class="panel">
+                <div class="panel-body">
+                    <div class="me-card">
+                        <span class="avatar lg" :style="avatarStyle(profile.user)">{{ initial(profile.user) }}</span>
+                        <div style="flex:1;">
+                            <div class="me-name" style="font-size:17px;">{{ authorName(profile.user) }}</div>
+                            <div class="me-sub" style="margin-top:3px;">
+                                {{ profile.user && profile.user.role === 'admin' ? '社区审核员' : '社区成员' }}
+                                · 加入于 {{ formatDate(profile.user && profile.user.created_at) }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="me-stats">
+                        <div class="me-stat"><b>{{ profile.thread_count }}</b><span>主题帖</span></div>
+                        <div class="me-stat"><b>{{ profile.reply_count }}</b><span>回复</span></div>
+                        <div class="me-stat"><b>{{ profile.like_received }}</b><span>获赞</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head"><div class="panel-title">📄 TA 的帖子</div></div>
+                <div class="panel-body flush">
+                    <thread-row v-for="t in profile.recent_posts" :key="t.id" :thread="t"
+                                @open="openThread" @board="goBoard"></thread-row>
+                    <div v-if="!profile.recent_posts || !profile.recent_posts.length" class="empty">还没有发布帖子</div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head"><div class="panel-title">💬 TA 的回复</div></div>
+                <div class="panel-body">
+                    <div v-for="r in profile.recent_replies" :key="r.id" style="padding:9px 0;border-bottom:1px solid #f3f4f6;">
+                        <div style="font-size:13.5px;color:#374151;line-height:1.7;">{{ r.content }}</div>
+                        <div class="mini-meta" style="margin-top:4px;">
+                            {{ formatTime(r.created_at) }} · ❤️ {{ r.like_count }}
+                        </div>
+                    </div>
+                    <div v-if="!profile.recent_replies || !profile.recent_replies.length" class="empty">还没有回复</div>
+                </div>
+            </div>
+        </div>
+        <aside class="col-side">
+            <div class="side-card">
+                <div class="side-head">🔥 热门讨论</div>
+                <div class="hot-list">
+                    <div v-for="(t, i) in overview.hot" :key="t.id" class="hot-item" @click="openThread(t.id)">
+                        <span class="hot-rank" :class="{ top: i < 3 }">{{ i + 1 }}</span>
+                        <span>{{ t.title }}</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- ============================ 我的（帖子管理） ============================ -->
+    <div class="layout" v-if="route.name === 'me'">
+        <div class="col-main" v-if="!token">
+            <div class="panel"><div class="empty"><span class="empty-icon">🔒</span>请先登录</div></div>
+        </div>
+        <template v-else>
+            <div class="col-main">
+                <div class="panel">
+                    <div class="panel-head">
+                        <div class="panel-title">📂 我的帖子</div>
+                        <button class="btn btn-ai btn-sm" @click="batchAudit" :disabled="batchLoading">
+                            {{ batchLoading ? '批量审核中…' : '⚡ 批量并行审核草稿' }}
+                        </button>
+                    </div>
+                    <div class="panel-body" style="padding-bottom:0;">
+                        <div class="tabs">
+                            <span v-for="s in statusTabs" :key="s.key" class="tab"
+                                  :class="{ active: mine.filter === s.key }" @click="switchMine(s.key)">{{ s.label }}</span>
+                        </div>
+                        <div v-if="batchResult" class="ai-result-box">
+                            <div class="ai-label">⚡ 批量并行审核结果</div>
+                            <div class="mini-meta">
+                                共 {{ batchResult.total }} 篇 · 实际 {{ batchResult.elapsed_ms }}ms ·
+                                串行等价 {{ batchResult.sequential_ms }}ms · 加速比 {{ batchResult.speedup }}x
+                            </div>
+                            <div v-for="(it, i) in batchResult.items" :key="i" class="batch-row">
+                                <span class="verdict-dot" :class="it.verdict"></span>
+                                <span style="flex:1;">{{ it.title }}</span>
+                                <span class="pill" :class="it.verdict">{{ verdictText(it.verdict) }}</span>
+                                <span class="mini-meta">{{ it.elapsed_ms }}ms</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="panel-body flush">
+                        <div v-if="!mine.items.length" class="empty">还没有帖子</div>
+                        <div v-for="a in mine.items" :key="a.id" class="row-item">
+                            <div class="row-main">
+                                <div class="row-title" @click="openThread(a.id)" style="cursor:pointer;">{{ a.title }}</div>
+                                <div class="row-meta">
+                                    {{ formatTime(a.created_at) }} · 💬 {{ a.reply_count }} · 👁️ {{ a.view_count }}
+                                    <span class="pill" :class="a.status">{{ statusText(a.status) }}</span>
+                                    <span v-if="a.audit_reason" style="color:#b45309;display:block;">
+                                        AI 依据：{{ a.audit_reason }}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="row-actions">
+                                <button class="btn btn-ghost btn-sm" @click="editThread(a)">编辑</button>
+                                <button class="btn btn-ghost btn-sm" @click="publishExisting(a.id)">审核发布</button>
+                                <button class="btn btn-danger btn-sm" @click="removeThread(a)">删除</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="pager" v-if="mine.total > mine.size">
+                        <button :disabled="mine.page <= 1" @click="loadMine(mine.page - 1)">上一页</button>
+                        <span>{{ mine.page }} / {{ Math.ceil(mine.total / mine.size) }}</span>
+                        <button :disabled="mine.page >= Math.ceil(mine.total / mine.size)" @click="loadMine(mine.page + 1)">下一页</button>
+                    </div>
+                </div>
+
+                <div class="panel" v-if="isAdmin">
+                    <div class="panel-head">
+                        <div class="panel-title">🛡️ 人工复核队列</div>
+                        <button class="btn btn-ghost btn-sm" @click="loadReviewQueue">刷新</button>
+                    </div>
+                    <div class="panel-body flush">
+                        <div v-if="!reviewQueue.length" class="empty">当前没有待复核内容</div>
+                        <div v-for="a in reviewQueue" :key="a.id" class="row-item">
+                            <div class="row-main">
+                                <div class="row-title">{{ a.title }}</div>
+                                <div class="row-meta">⚠️ {{ a.audit_reason || 'AI 判定疑似违规' }} · 风险分 {{ a.audit_score }}</div>
+                            </div>
+                            <div class="row-actions">
+                                <button class="btn btn-ghost btn-sm" @click="review(a.id, 'approve')">通过</button>
+                                <button class="btn btn-danger btn-sm" @click="review(a.id, 'reject')">拒绝</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <aside class="col-side">
+                <div class="side-card">
+                    <div class="side-body">
+                        <div class="me-card">
+                            <span class="avatar lg" :style="avatarStyle(me)">{{ initial(me) }}</span>
+                            <div>
+                                <div class="me-name">{{ me.nickname || me.username }}</div>
+                                <div class="me-sub">{{ me.role === 'admin' ? '社区审核员' : '社区成员' }}</div>
+                            </div>
+                        </div>
+                        <div class="me-stats">
+                            <div class="me-stat"><b>{{ myStats.threads }}</b><span>发帖</span></div>
+                            <div class="me-stat"><b>{{ myStats.replies }}</b><span>回复</span></div>
+                            <div class="me-stat"><b>{{ myStats.likes }}</b><span>获赞</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="side-card">
+                    <div class="side-head">🔧 服务状态</div>
+                    <div class="side-body">
+                        <div class="audit-mini">
+                            AI 服务：<b :style="{color: aiHealth.status === 'ok' ? '#10b981' : '#ef4444'}">
+                                {{ aiHealth.status === 'ok' ? '在线' : '不可用' }}</b><br>
+                            <template v-if="aiHealth.runtime">
+                                并行模式：<b>{{ aiHealth.runtime.parallelism_mode }}</b><br>
+                                请求内并发度：<b>{{ aiHealth.runtime.concurrency }}</b><br>
+                                大模型：<b>{{ aiHealth.runtime.llm_configured ? '已配置' : '未配置' }}</b>
+                            </template>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </template>
+    </div>
+
+    <!-- ============================ 并行审核实验室 ============================ -->
+    <div class="layout" v-if="route.name === 'audit'">
+        <div class="col-main">
+            <div class="panel">
+                <div class="panel-head"><div class="panel-title">⚡ 并行审核实验室</div></div>
+                <div class="panel-body">
+                    <div class="field">
+                        <label>标题（可选）</label>
+                        <input type="text" v-model="auditForm.title" placeholder="例如：低价货源推荐">
+                    </div>
+                    <div class="field">
+                        <label>待审核内容</label>
+                        <textarea v-model="auditForm.content" rows="8"
+                                  placeholder="粘贴任意文本。试试含「加微信」「兼职日结」的广告，或粘贴一篇长文体验分片并行。"></textarea>
+                    </div>
+                    <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
+                        <div style="flex:1;min-width:200px;">
+                            <label style="font-size:13px;font-weight:600;color:#4b5563;">审核模式</label>
+                            <select v-model="auditForm.mode" style="width:100%;padding:9px 12px;border:1px solid #e5e7eb;border-radius:6px;margin-top:6px;">
+                                <option value="semantic">规则 + 多维度语义并行</option>
+                                <option value="chunked">长文分片并发审核</option>
+                                <option value="local">仅本地规则（毫秒级）</option>
+                            </select>
+                        </div>
+                        <div style="flex:1;min-width:200px;">
+                            <label style="font-size:13px;font-weight:600;color:#4b5563;">
+                                并行度：{{ auditForm.concurrency }}
+                            </label>
+                            <input type="range" min="1" max="16" v-model.number="auditForm.concurrency"
+                                   style="width:100%;margin-top:14px;">
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                        <button class="btn btn-ai" @click="runAuditStream" :disabled="auditLoading">
+                            {{ auditLoading ? '审核中…' : '⚡ 并行审核（实时可视化）' }}
+                        </button>
+                        <button class="btn btn-ghost" @click="fillSample('normal')">正常文本</button>
+                        <button class="btn btn-ghost" @click="fillSample('ad')">违规文本</button>
+                        <button class="btn btn-ghost" @click="fillSample('long')">长文（触发分片）</button>
+                    </div>
+                    <div class="parallel-note" v-if="auditInfo.rule_count">
+                        引擎：{{ auditInfo.engine }} · 规则 {{ auditInfo.rule_count }} 条 /
+                        正则 {{ auditInfo.rule_patterns }} 条 · 语义维度 {{ (auditInfo.dimensions || []).length }} 个 ·
+                        并行度上限 {{ auditInfo.max_parallel }}
+                    </div>
+                    <div class="timeline" v-if="liveEvents.length">
+                        <div v-for="(ev, i) in liveEvents" :key="i" class="timeline-item" :class="ev.state">
+                            <span class="timeline-time">{{ ev.elapsed_ms }}ms</span>
+                            <span class="timeline-msg">{{ ev.message }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel" v-if="auditResult">
+                <div class="panel-head"><div class="panel-title">📊 审核结果</div></div>
+                <div class="panel-body"><audit-result :result="auditResult"></audit-result></div>
+            </div>
+        </div>
+
+        <aside class="col-side">
+            <div class="side-card">
+                <div class="side-head">📈 历史并行收益</div>
+                <div class="side-body">
+                    <div class="site-stats" v-if="auditInsight.total_audits">
+                        <div class="site-stat"><b>{{ auditInsight.total_audits }}</b><span>累计审核</span></div>
+                        <div class="site-stat"><b>{{ auditInsight.avg_elapsed_ms }}ms</b><span>平均耗时</span></div>
+                        <div class="site-stat"><b>{{ auditInsight.avg_speedup }}x</b><span>平均加速比</span></div>
+                        <div class="site-stat"><b>{{ auditInsight.max_speedup }}x</b><span>最高加速比</span></div>
+                        <div class="site-stat"><b>{{ auditInsight.peak_concurrency }}</b><span>峰值并行度</span></div>
+                        <div class="site-stat"><b>{{ auditInsight.pass_rate }}%</b><span>通过率</span></div>
+                    </div>
+                    <div v-else class="mini-meta">暂无审核记录</div>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- ============================ 登录 / 注册 ============================ -->
+    <div class="auth-wrap" v-if="route.name === 'login'">
+        <div class="auth-card">
+            <div class="auth-title">{{ authMode === 'login' ? '欢迎回来' : '加入社区' }}</div>
+            <div class="auth-sub">智能内容社区 · 发帖即审核</div>
+
+            <div class="field">
+                <label>用户名</label>
+                <input type="text" v-model="authForm.username" placeholder="3-20 个字符" @keyup.enter="doAuth">
+            </div>
+            <div class="field">
+                <label>密码</label>
+                <input type="password" v-model="authForm.password" placeholder="至少 6 位" @keyup.enter="doAuth">
+            </div>
+            <div class="field" v-if="authMode === 'register'">
+                <label>昵称（可选）</label>
+                <input type="text" v-model="authForm.nickname" placeholder="展示给其他成员的名字">
+            </div>
+
+            <button class="btn btn-primary btn-block" @click="doAuth" :disabled="authLoading">
+                {{ authLoading ? '处理中…' : (authMode === 'login' ? '登录' : '注册') }}
+            </button>
+            <div :class="'alert alert-' + authMsg.type" v-if="authMsg.text">{{ authMsg.text }}</div>
+
+            <div class="auth-switch">
+                <template v-if="authMode === 'login'">
+                    还没有账号？<a @click="authMode = 'register'">立即注册</a>
+                </template>
+                <template v-else>
+                    已有账号？<a @click="authMode = 'login'">去登录</a>
+                </template>
+            </div>
+            <div class="field-hint" style="text-align:center;margin-top:14px;">
+                演示账号：admin / admin123456（审核员）
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== 帖子行组件 ==================== -->
+    <script type="text/x-template" id="thread-row-template">
+        <div class="thread-row" @click="$emit('open', thread.id)">
+            <div class="thread-avatar">
+                <span class="avatar" :style="avatarStyle(thread.author)">{{ initial(thread.author) }}</span>
+            </div>
+            <div class="thread-main">
+                <div class="thread-title">
+                    <span v-if="thread.pinned" class="badge-pin">置顶</span>
+                    <span v-if="thread.featured" class="badge-ess">精华</span>
+                    <span>{{ thread.title }}</span>
+                </div>
+                <div class="thread-excerpt" v-if="thread.summary">{{ thread.summary }}</div>
+                <div class="thread-meta">
+                    <a class="author" @click.stop="goUser(thread.author_id)">{{ authorName(thread.author) }}</a>
+                    <span v-if="thread.board" class="tag-chip" @click.stop="goBoard(thread.board.slug)">
+                        {{ thread.board.icon }} {{ thread.board.name }}
+                    </span>
+                    <span>{{ formatTime(thread.last_reply_at || thread.created_at) }}</span>
+                    <span class="thread-tags">
+                        <span v-for="t in splitTags(thread.tags)" :key="t" class="tag-chip">{{ t }}</span>
+                    </span>
+                </div>
+            </div>
+            <div class="thread-stats">
+                <span class="stat-pill replies">💬 {{ thread.reply_count }}</span>
+                <span class="stat-pill">👁️ {{ thread.view_count }}</span>
+                <span class="stat-pill">❤️ {{ thread.like_count }}</span>
+            </div>
+        </div>
+    </script>
+
+    <!-- ==================== 审核结果组件 ==================== -->
+    <script type="text/x-template" id="audit-result-template">
+        <div>
+            <div class="verdict-banner" :class="result.verdict">
+                <span class="verdict-icon">{{ verdictIcon }}</span>
+                <div>
+                    <div class="verdict-title">{{ verdictTitle }}</div>
+                    <div class="verdict-reason">{{ result.reason }}</div>
+                </div>
+                <div class="risk-score"><b>{{ result.risk_score }}</b><span>风险分</span></div>
+            </div>
+
+            <div class="perf-grid">
+                <div><b>{{ result.elapsed_ms }} ms</b><span>实际并行耗时</span></div>
+                <div><b>{{ result.sequential_ms }} ms</b><span>串行等价耗时</span></div>
+                <div class="highlight"><b>{{ result.speedup }}x</b><span>并行加速比</span></div>
+                <div><b>{{ result.critical_path_ms }} ms</b><span>关键路径</span></div>
+                <div><b>{{ result.peak_concurrency }}</b><span>峰值并行度</span></div>
+                <div><b>{{ result.task_count }}</b><span>并行任务数</span></div>
+                <div><b>{{ result.chunks }}</b><span>文本分片</span></div>
+            </div>
+
+            <div class="mini-meta" style="margin-bottom:10px;">
+                引擎 {{ result.engine }} · 模式 {{ modeText(result.mode) }} · 策略 {{ result.strategy }} · 并行度 {{ result.workers }}
+                <span v-if="result.degraded" class="pill review tiny">存在降级分支</span>
+            </div>
+
+            <div class="section-title">并行执行时间线</div>
+            <div class="gantt">
+                <div v-for="stage in result.stages" :key="stage.key" class="gantt-stage">
+                    <div class="gantt-label">
+                        <span class="gantt-name">{{ stage.name }}</span>
+                        <span class="gantt-dur">{{ stage.duration }} ms · {{ stage.tasks ? stage.tasks.length : stage.workers }} 个任务</span>
+                    </div>
+                    <div class="gantt-track">
+                        <div class="gantt-bar" :class="stage.status" :style="barStyle(stage)" :title="stage.result">{{ stage.result }}</div>
+                    </div>
+                    <div v-for="(t, i) in (stage.tasks || [])" :key="i" class="gantt-task-row">
+                        <span class="gantt-task-name">└ {{ t.name }}</span>
+                        <div class="gantt-track small">
+                            <div class="gantt-bar" :class="t.status" :style="taskBarStyle(t)" :title="t.result">{{ t.duration }}ms</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-title">各审核维度结论（并行分支）</div>
+            <div class="dimension-table">
+                <div v-for="d in result.dimensions" :key="d.key" class="dimension-row" :class="d.verdict">
+                    <div class="dim-name">
+                        {{ d.name }}
+                        <span v-if="d.ko" class="pill reject tiny">一票否决</span>
+                        <span v-if="d.degraded" class="pill review tiny">降级</span>
+                    </div>
+                    <div class="dim-score">
+                        <div class="score-bar"><div class="score-fill" :class="d.verdict" :style="{ width: d.riskScore + '%' }"></div></div>
+                        <span>{{ d.riskScore }}</span>
+                    </div>
+                    <div class="dim-reason">{{ (d.reasons || []).join('；') || '未发现违规' }}</div>
+                </div>
+            </div>
+
+            <template v-if="(result.hits || []).length">
+                <div class="section-title">本地规则命中</div>
+                <div class="hit-list">
+                    <div v-for="h in result.hits" :key="h.rule_id" class="hit-item">
+                        <div class="hit-head">
+                            <span class="pill reject tiny">{{ h.rule_name }}</span>
+                            <span class="mini-meta">{{ h.rule_id }} · {{ h.category }} · 权重 {{ h.weight }}</span>
+                        </div>
+                        <div class="hit-words">命中词：{{ (h.keywords || []).join('、') }}</div>
+                        <div v-for="(e, i) in (h.evidences || [])" :key="i" class="hit-evidence">…{{ e }}…</div>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </script>
+
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
