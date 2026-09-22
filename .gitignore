@@ -6,6 +6,7 @@ ai-service/.env
 bin/
 main
 *.exe
+*.exe~
 tmp/
 
 # 日志
@@ -13,6 +14,20 @@ tmp/
 
 # Go
 vendor/
+go.work
+go.work.sum
+
+# 测试与覆盖率产物
+*.test
+*.out
+coverage.*
+*.coverprofile
+profile.cov
+
+# 动态库
+*.dll
+*.so
+*.dylib
 
 # Python
 __pycache__/

@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"os"
+	"strings"
 
 	"content-community/internal/handler"
 	"content-community/internal/middleware"
@@ -55,18 +56,22 @@ func main() {
 
 	port := cfg.ServerPort
 	log.Printf("内容社区服务已启动: http://localhost:%s", port)
+	log.Printf("前端资源版本号: %s（前端文件变更后该值会自动变化，浏览器将重新拉取）", handler.AssetVersion())
 	if err := r.Run(":" + port); err != nil {
 		log.Fatal("服务启动失败: ", err)
 	}
 }
 
-// corsMiddleware 允许前端页面跨域调试访问 API。
+// corsMiddleware 允许前端页面跨域调试访问 API，并禁止浏览器缓存接口响应。
 func corsMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization")
 		c.Header("Access-Control-Max-Age", "86400")
+		// 接口响应不做缓存：点赞数、回复数等会随操作变化，
+		// 若被浏览器/代理缓存会出现"点了赞但数字不变"的错觉。
+		c.Header("Cache-Control", "no-store")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return
@@ -138,11 +143,18 @@ func registerRoutes(r *gin.Engine) {
 		admin.PUT("/articles/:id/flags", handler.UpdateArticleFlags)
 	}
 
-	// 静态前端：直接把 frontend 目录挂载到根路径，便于本地一体化运行。
-	r.Static("/static", "./frontend")
-	r.StaticFile("/", "./frontend/index.html")
+	// 静态前端：直接把 frontend 目录挂载到根路径，便于一体化运行。
+	// 首页会把资源版本号注入到 CSS/JS 引用上，并声明 no-cache；
+	// 带版本号的静态资源则长期强缓存，从而保证"前端一改，刷新即生效"。
+	r.GET("/", handler.ServeIndex)
+	r.GET("/static/:file", handler.ServeStatic)
 
 	r.NoRoute(func(c *gin.Context) {
+		// 前端为 hash 路由，未知路径统一回落到首页，避免直接访问子路径时 404。
+		if c.Request.Method == "GET" && !strings.HasPrefix(c.Request.URL.Path, "/api") {
+			handler.ServeIndex(c)
+			return
+		}
 		c.JSON(404, gin.H{"error": "接口不存在"})
 	})
 }
