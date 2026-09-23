@@ -226,6 +226,21 @@
                     </div>
                 </div>
             </div>
+
+            <div class="side-card" v-if="auditInsight.total_audits">
+                <div class="side-head">
+                    <span>并行审核引擎</span>
+                    <a @click="go('/audit-lab')" class="u-link-sm">实验室</a>
+                </div>
+                <div class="side-body">
+                    <div class="site-stats">
+                        <div class="site-stat"><b>{{ auditInsight.total_audits }}</b><span>累计审核</span></div>
+                        <div class="site-stat"><b>{{ auditInsight.avg_speedup }}x</b><span>平均加速比</span></div>
+                        <div class="site-stat"><b>{{ auditInsight.avg_elapsed_ms }}ms</b><span>平均耗时</span></div>
+                        <div class="site-stat"><b>{{ auditInsight.peak_concurrency }}</b><span>峰值并行度</span></div>
+                    </div>
+                </div>
+            </div>
         </aside>
     </div>
 
@@ -779,7 +794,11 @@
         </div>
     </div>
 
-    <!-- ==================== 帖子行组件 ==================== -->
+    
+
+</div>
+
+<!-- ==================== 帖子行组件 ==================== -->
     <script type="text/x-template" id="thread-row-template">
         <div class="thread-row" @click="$emit('open', thread.id)">
             <span class="avatar" :style="avatarStyle(thread.author)">{{ initial(thread.author) }}</span>
@@ -896,8 +915,6 @@
             </template>
         </div>
     </script>
-
-</div>
 
 <script src="/static/app.js"></script>
 </body>
