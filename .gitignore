@@ -45,6 +45,6 @@ redis_data/
 .DS_Store
 
 # 临时工作文件（提交信息草稿、临时脚本与日志，避免误提交）
-_commit_msg.txt
+_*.txt
 _*.py
 _*.log
