@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -14,36 +15,47 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-type generateReq struct {
-	Title   string `json:"title" binding:"required"`
+type polishReq struct {
+	Title   string `json:"title"`
 	Content string `json:"content"`
-	Outline string `json:"outline"`
 	Style   string `json:"style"`
 }
 
-// AIGenerate AI 辅助创作：根据主题/大纲生成文章正文。
-func AIGenerate(c *gin.Context) {
-	var req generateReq
+// AIPolish AI 润色：对用户已经写好的正文做语言层面打磨。
+//
+// 与"生成"的本质区别：不产出新内容，只改用户自己写的东西。
+// 正文为空时直接返回 400，不调用任何模型——从接口层面保证
+// "必须先有用户内容，才能让 AI 润色"。
+func AIPolish(c *gin.Context) {
+	var req polishReq
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "请先填写文章主题"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请求格式错误"})
 		return
 	}
-	outline := req.Outline
-	if outline == "" {
-		outline = req.Content
-	}
-	if strings.TrimSpace(outline) == "" {
-		outline = "请围绕该主题生成一篇结构完整、观点清晰的社区文章"
+	if strings.TrimSpace(req.Content) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "请先输入正文内容，AI 才能进行润色",
+			"hint":  "AI 只负责润色你写好的内容，不会替你凭空生成文章",
+		})
+		return
 	}
 
-	content, err := service.AIGenerateArticle(req.Title, outline, req.Style)
+	result, err := service.AIPolishArticle(req.Title, req.Content, req.Style)
 	if err != nil {
+		if errors.Is(err, service.ErrPolishNoContent) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
-		"title":             req.Title,
-		"generated_content": content,
+		"title":            result.Title,
+		"polished_content": result.PolishedContent,
+		"changed":          result.Changed,
+		"degraded":         result.Degraded,
+		"model":            result.Model,
+		"elapsed_ms":       result.ElapsedMs,
 	})
 }
 

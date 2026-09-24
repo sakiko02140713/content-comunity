@@ -81,16 +81,31 @@ def handle_dimensions(body: dict[str, Any], query: dict[str, list[str]]) -> dict
 
 
 # ===========================================================================
-# AI 辅助创作
+# AI 辅助创作（润色）
+#
+# 说明：本服务不提供"凭空生成文章"的能力，只对用户已经写好的内容做语言润色。
+# content 为空一律拒绝，从接口层面保证"必须先有用户自己的内容"。
 # ===========================================================================
-@route("/api/ai/generate")
-def handle_generate(body: dict[str, Any], query: dict[str, list[str]]) -> dict[str, Any]:
+@route("/api/ai/polish")
+def handle_polish(body: dict[str, Any], query: dict[str, list[str]]) -> dict[str, Any]:
     title = str(body.get("title") or "").strip()
-    if not title:
-        raise ValueError("title 不能为空")
-    outline = str(body.get("content") or body.get("outline") or "")
+    content = str(body.get("content") or "")
+    if not content.strip():
+        raise ValueError("请先输入正文内容，AI 才能进行润色")
     style = str(body.get("style") or "")
-    return generate.generate_article(title, outline, style)
+    return generate.polish_article(title, content, style)
+
+
+# 兼容旧路径：历史上 /api/ai/generate 用于生成文章，
+# 现在统一转为润色，且同样强制要求提供 content。
+@route("/api/ai/generate")
+def handle_generate_legacy(body: dict[str, Any], query: dict[str, list[str]]) -> dict[str, Any]:
+    title = str(body.get("title") or "").strip()
+    content = str(body.get("content") or body.get("outline") or "")
+    if not content.strip():
+        raise ValueError("请先输入正文内容，AI 才能进行润色")
+    style = str(body.get("style") or "")
+    return generate.polish_article(title, content, style)
 
 
 @route("/api/ai/summary")

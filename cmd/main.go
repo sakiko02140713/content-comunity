@@ -126,7 +126,8 @@ func registerRoutes(r *gin.Engine) {
 		auth.POST("/likes/toggle", handler.ToggleLike)
 
 		// AI 辅助功能
-		auth.POST("/ai/generate", handler.AIGenerate)
+		// 只提供"润色"，不提供"凭空生成"：润色强制要求正文非空。
+		auth.POST("/ai/polish", handler.AIPolish)
 		auth.POST("/ai/summary", handler.AISummary)
 		auth.POST("/ai/articles/:id/summary", handler.AISummarizeArticle)
 

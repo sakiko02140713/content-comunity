@@ -148,8 +148,8 @@ createApp({
             composeLoading: false,
             draftLoading: false,
             composeMsg: { text: '', type: '' },
-            aiWriting: false,
-            aiDraft: '',
+            aiPolishing: false,
+            polishResult: null,
 
             liveEvents: [],
             liveAudit: { running: false, elapsed: 0, result: null, timer: null },
@@ -571,7 +571,7 @@ createApp({
                 prefill || {}
             );
             this.composeMsg = { text: '', type: '' };
-            this.aiDraft = '';
+            this.polishResult = null;
             this.liveEvents = [];
             this.liveAudit = { running: false, elapsed: 0, result: null, timer: null };
             this.go('/compose');
@@ -727,28 +727,50 @@ createApp({
             this.summarizing = false;
         },
 
-        async aiWrite() {
-            if (!this.compose.title.trim()) {
-                this.composeMsg = { text: '请先填写标题，AI 才能据此生成正文', type: 'error' };
+        /**
+         * AI 润色：只对用户已经写好的正文做语言打磨。
+         * 正文为空时按钮本身是禁用的，这里再兜一层校验，双保险。
+         */
+        async aiPolish() {
+            const content = (this.compose.content || '').trim();
+            if (!content) {
+                this.composeMsg = { text: '请先输入正文内容，AI 才能进行润色', type: 'error' };
                 return;
             }
-            this.aiWriting = true;
-            this.aiDraft = '';
+            this.aiPolishing = true;
+            this.polishResult = null;
+            this.composeMsg = { text: '', type: '' };
             try {
-                const res = await axios.post(API + '/ai/generate', {
+                const res = await axios.post(API + '/ai/polish', {
                     title: this.compose.title,
-                    outline: this.compose.content || '',
+                    content: this.compose.content,
                 }, { headers: this.authHeaders() });
-                this.aiDraft = res.data.generated_content;
+
+                this.polishResult = {
+                    content: res.data.polished_content,
+                    title: res.data.title || '',
+                    originalLength: content.length,
+                    elapsedMs: res.data.elapsed_ms || 0,
+                    degraded: res.data.degraded,
+                    changed: res.data.changed,
+                };
+                if (res.data.degraded) {
+                    this.composeMsg = { text: 'AI 服务当前不可用，未做任何改写（已保留你的原文）', type: 'warn' };
+                } else if (!res.data.changed) {
+                    this.composeMsg = { text: 'AI 认为原文已经不错，未做改动', type: 'info' };
+                }
             } catch (e) {
-                this.composeMsg = { text: this.errText(e, 'AI 生成失败'), type: 'error' };
+                this.composeMsg = { text: this.errText(e, 'AI 润色失败'), type: 'error' };
             }
-            this.aiWriting = false;
+            this.aiPolishing = false;
         },
 
-        useAiDraft() {
-            this.compose.content = this.aiDraft;
-            this.aiDraft = '';
+        /** 用润色结果替换正文 */
+        applyPolish() {
+            if (!this.polishResult) return;
+            this.compose.content = this.polishResult.content;
+            this.composeMsg = { text: '已用润色后的内容替换正文，可继续修改或直接发布', type: 'success' };
+            this.polishResult = null;
         },
 
         /* ============================ 批量审核 ============================ */

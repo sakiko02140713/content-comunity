@@ -735,6 +735,16 @@ button { font-family: inherit; font-size: inherit; }
 .ai-box-label { font-weight: 800; color: var(--ok); font-size: 15px; margin-bottom: var(--s3); }
 .ai-box-content { white-space: pre-wrap; font-size: 15px; line-height: 1.9; max-height: 440px; overflow-y: auto; color: var(--ink-2); }
 
+/* 润色结果里的"建议标题"提示行 */
+.polish-title-suggest {
+    display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
+    padding: 10px 14px; margin-bottom: var(--s4);
+    background: var(--brand-soft); border: 1px solid var(--brand-line);
+    border-radius: var(--r-sm); font-size: 14px; color: var(--brand-dark);
+}
+.polish-title-suggest b { font-weight: 750; }
+.polish-title-suggest .link-btn { padding: 4px 10px; color: var(--brand); font-weight: 700; }
+
 .note {
     padding: 13px 18px; border-radius: var(--r-sm); font-size: 14px;
     background: var(--brand-soft); border: 1px solid var(--brand-line);

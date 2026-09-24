@@ -466,12 +466,17 @@
                         <button class="btn btn-ghost" @click="saveDraft" :disabled="draftLoading">
                             {{ draftLoading ? '保存中…' : '存为草稿' }}
                         </button>
-                        <button class="btn btn-ai" @click="aiWrite" :disabled="aiWriting">
-                            {{ aiWriting ? 'AI 生成中…' : 'AI 帮我写' }}
+                        <button class="btn btn-ai" @click="aiPolish"
+                                :disabled="aiPolishing || !compose.content.trim()"
+                                :title="compose.content.trim() ? '让 AI 润色你写好的正文' : '请先输入正文，AI 才能润色'">
+                            {{ aiPolishing ? 'AI 润色中…' : 'AI 润色' }}
                         </button>
                         <button class="btn btn-ghost" @click="go('/')">取消</button>
                     </div>
-                    <div class="field-hint" v-if="!compose.id">
+                    <div class="field-hint" v-if="!compose.content.trim()">
+                        AI 只在你写出正文之后才可用：它会润色你的文字，但不会替你凭空写作。
+                    </div>
+                    <div class="field-hint" v-else-if="!compose.id">
                         提示：可以直接提交，审核通过后会自动发布（同时保存为草稿以便后续编辑）。
                     </div>
                     <div :class="'alert alert-' + composeMsg.type" v-if="composeMsg.text">{{ composeMsg.text }}</div>
@@ -494,11 +499,24 @@
                 </div>
             </div>
 
-            <div class="panel" v-if="aiDraft">
-                <div class="panel-head bordered"><div class="panel-title">AI 生成结果</div></div>
+            <div class="panel" v-if="polishResult">
+                <div class="panel-head bordered">
+                    <div class="panel-title plain">AI 润色结果</div>
+                    <span class="mini-meta">
+                        原文 {{ polishResult.originalLength }} 字 → 润色后 {{ polishResult.content.length }} 字
+                        <template v-if="polishResult.elapsedMs"> · {{ polishResult.elapsedMs }}ms</template>
+                    </span>
+                </div>
                 <div class="panel-body">
-                    <div class="ai-box-content u-max340">{{ aiDraft }}</div>
-                    <button class="btn btn-primary btn-sm u-mt-lg" @click="useAiDraft">填入正文</button>
+                    <div v-if="polishResult.title && polishResult.title !== compose.title" class="polish-title-suggest">
+                        建议标题：<b>{{ polishResult.title }}</b>
+                        <button class="link-btn" @click="compose.title = polishResult.title">采用</button>
+                    </div>
+                    <div class="ai-box-content u-max340">{{ polishResult.content }}</div>
+                    <div class="form-actions u-mt-lg">
+                        <button class="btn btn-primary btn-sm" @click="applyPolish">替换正文</button>
+                        <button class="btn btn-ghost btn-sm" @click="polishResult = null">放弃</button>
+                    </div>
                 </div>
             </div>
         </div>

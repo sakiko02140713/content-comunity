@@ -20,12 +20,22 @@ import llm_client
 
 logger = logging.getLogger("ai-service.generate")
 
-_ARTICLE_SYSTEM_PROMPT = (
-    "你是一位资深的中文社区内容编辑。"
-    "请根据用户给出的主题与大纲撰写文章，要求：\n"
-    "1. 结构完整，包含引言、主体段落与总结；\n"
-    "2. 语言自然流畅，符合中文社区的表达习惯；\n"
-    "3. 只输出正文，不要输出标题以外的元信息，不要使用 Markdown 代码块包裹全文。"
+_POLISH_SYSTEM_PROMPT = (
+    "你是一位资深的中文编辑，负责润色作者已经写好的文章草稿。\n"
+    "必须遵守以下原则：\n"
+    "1. 保留作者的原意、观点、立场与叙事顺序，不得改变文章主旨；\n"
+    "2. 保留作者的个人语气与表达风格，不要改写成另一种文风；\n"
+    "3. 保留原文中的所有事实、数字、专有名词、代码与引用，不得增删或篡改；\n"
+    "4. 不要凭空添加原文没有的内容、例子或结论；\n"
+    "5. 只做语言层面的打磨：修正错别字与语病、理顺句子结构、调整标点、"
+    "增强段落之间的衔接、去掉冗余重复的表达。\n"
+    "输出要求：只输出润色后的完整正文，不要输出修改说明、对比、标题或任何解释性文字，"
+    "不要用 Markdown 代码块包裹全文。"
+)
+
+_POLISH_TITLE_PROMPT = (
+    "你是一位标题编辑。请在不改变原意、不夸大、不标题党的前提下润色标题，"
+    "使其更准确通顺，长度控制在 30 字以内。只输出润色后的标题本身，不要加引号或说明。"
 )
 
 _SUMMARY_SYSTEM_PROMPT = (
@@ -34,53 +44,67 @@ _SUMMARY_SYSTEM_PROMPT = (
 )
 
 
-def generate_article(title: str, outline: str = "", style: str = "") -> dict[str, Any]:
-    """根据主题/大纲生成文章正文。"""
-    started = time.time()
-    outline = (outline or "").strip() or "请围绕该主题生成一篇结构完整、观点清晰的社区文章"
-    style = (style or "").strip()
+def polish_article(title: str, content: str, style: str = "") -> dict[str, Any]:
+    """润色用户已经写好的文章正文。
 
-    user_prompt = f"文章主题：{title}\n参考大纲或要求：{outline}"
-    if style:
-        user_prompt += f"\n期望风格：{style}"
+    与"生成"的本质区别：本函数不产出新内容，只对用户提供的文本做语言层面的打磨。
+    content 为空时直接拒绝，从接口层面保证"必须先有用户内容"。
+    """
+    started = time.time()
+    content = (content or "").strip()
+    if not content:
+        raise ValueError("润色需要先提供正文内容")
 
     if not llm_client.llm_available():
-        # 降级：无大模型时给出结构化大纲模板，保证创作流程不被阻断。
-        fallback = _offline_outline(title, outline)
+        # 降级：无大模型时不做任何改写，原样返回并明确标记未润色，
+        # 避免用机器模板覆盖用户自己的文字。
         return {
-            "generated_content": fallback,
-            "model": "offline-template",
+            "polished_content": content,
+            "title": title,
+            "changed": False,
             "degraded": True,
+            "model": "offline-passthrough",
             "elapsed_ms": int((time.time() - started) * 1000),
         }
 
-    content = llm_client.chat(
+    user_prompt = f"文章标题：{title or '（未填写）'}\n\n需要润色的正文如下：\n{content}"
+    if style:
+        user_prompt += f"\n\n额外要求（仅限语言风格层面）：{style}"
+
+    polished = llm_client.chat(
         messages=[
-            {"role": "system", "content": _ARTICLE_SYSTEM_PROMPT},
+            {"role": "system", "content": _POLISH_SYSTEM_PROMPT},
             {"role": "user", "content": user_prompt},
         ],
-        temperature=0.8,
-        max_tokens=2000,
-    )
+        temperature=0.35,
+        max_tokens=2600,
+    ).strip()
+
+    # 标题也顺带润色，失败时保留原标题，不影响正文结果
+    polished_title = (title or "").strip()
+    if polished_title:
+        try:
+            new_title = llm_client.chat(
+                messages=[
+                    {"role": "system", "content": _POLISH_TITLE_PROMPT},
+                    {"role": "user", "content": polished_title},
+                ],
+                temperature=0.3,
+                max_tokens=80,
+            ).strip().strip('"“”《》')
+            if 0 < len(new_title) <= 60:
+                polished_title = new_title
+        except Exception as exc:  # noqa: BLE001 - 标题润色失败不影响正文
+            logger.warning("标题润色失败，保留原标题: %s", exc)
+
     return {
-        "generated_content": content.strip(),
-        "model": config.LLM_MODEL,
+        "polished_content": polished,
+        "title": polished_title,
+        "changed": polished != content,
         "degraded": False,
+        "model": config.LLM_MODEL,
         "elapsed_ms": int((time.time() - started) * 1000),
     }
-
-
-def _offline_outline(title: str, outline: str) -> str:
-    return (
-        f"# {title}\n\n"
-        "## 引言\n"
-        f"{outline}\n\n"
-        "## 正文\n"
-        "（AI 服务未配置大模型密钥，此处为离线大纲模板。"
-        "配置 DEEPSEEK_API_KEY 后即可生成完整正文。）\n\n"
-        "## 总结\n"
-        "围绕上述要点给出结论与行动建议。"
-    )
 
 
 def summarize_text(text: str, title: str = "") -> str:

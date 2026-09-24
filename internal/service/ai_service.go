@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,10 +32,17 @@ var aiClient = &http.Client{
 	},
 }
 
-type AIGenerateResponse struct {
-	GeneratedContent string `json:"generated_content"`
-	Model            string `json:"model"`
-	ElapsedMs        int64  `json:"elapsed_ms"`
+// AIPolishResponse AI 润色结果。
+//
+// 本系统不提供"凭空生成文章"的能力：AI 只对用户已写好的内容做语言层面打磨，
+// 因此响应里没有"生成内容"，只有"润色后的内容"。
+type AIPolishResponse struct {
+	PolishedContent string `json:"polished_content"`
+	Title           string `json:"title"`
+	Changed         bool   `json:"changed"`
+	Degraded        bool   `json:"degraded"`
+	Model           string `json:"model"`
+	ElapsedMs       int64  `json:"elapsed_ms"`
 }
 
 type AISummaryResponse struct {
@@ -109,21 +117,36 @@ func truncate(s string, n int) string {
 	return string(r[:n]) + "…"
 }
 
-// AIGenerateArticle 调用大语言模型辅助创作文章。
-func AIGenerateArticle(title, outline, style string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+// ErrPolishNoContent 未提供正文时拒绝润色。
+//
+// 这是产品约束的落点：AI 只做"润色"，不做"代写"，
+// 因此没有用户自己的内容就没有可润色的对象。
+var ErrPolishNoContent = errors.New("请先输入正文内容，AI 才能进行润色")
+
+// AIPolishArticle 调用大语言模型润色用户已写好的文章。
+//
+// 与"生成"的区别：不产出新观点与新段落，只修正错别字语病、理顺句子、
+// 优化段落衔接，并完整保留原文的事实、数字与个人语气。
+// content 为空时直接返回 ErrPolishNoContent，不发起任何模型调用。
+func AIPolishArticle(title, content, style string) (*AIPolishResponse, error) {
+	if strings.TrimSpace(content) == "" {
+		return nil, ErrPolishNoContent
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	var result AIGenerateResponse
-	err := postJSON(ctx, "/api/ai/generate", map[string]any{
+	var result AIPolishResponse
+	if err := postJSON(ctx, "/api/ai/polish", map[string]any{
 		"title":   title,
-		"content": outline,
+		"content": content,
 		"style":   style,
-	}, &result)
-	if err != nil {
-		return "", err
+	}, &result); err != nil {
+		return nil, err
 	}
-	return result.GeneratedContent, nil
+	if result.PolishedContent == "" {
+		return nil, errors.New("AI 未返回润色结果，请稍后重试")
+	}
+	return &result, nil
 }
 
 // AISummaryHotlist 让大模型分析社区热榜趋势。
