@@ -71,6 +71,44 @@ function splitTags(raw) {
 }
 
 /* ---------------------------------------------------------------------------
+   版块图标
+   ---------------------------------------------------------------------------
+   用统一风格的线性 SVG 取代 emoji：
+   emoji 的实际字形由系统字体决定，各平台风格不一、大小与基线也不齐，
+   而线性图标能保证粗细一致、颜色可控，整体更简洁克制。
+   图标只表达"这是什么类型的版块"，不承担装饰职责。
+   --------------------------------------------------------------------------- */
+const BOARD_ICONS = {
+    // 技术交流：代码尖括号
+    tech: '<path d="M9 8 4.5 12 9 16"/><path d="M15 8l4.5 4L15 16"/>',
+    // 创作分享：铅笔
+    create: '<path d="M4 20l4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20z"/><path d="M14.5 6.5l3 3"/>',
+    // AI 与内容安全：火花
+    ai: '<path d="M12 3.5l1.9 5.1 5.1 1.9-5.1 1.9L12 17.5l-1.9-5.1L5 10.5l5.1-1.9L12 3.5z"/>',
+    // 提问求助：问号
+    ask: '<circle cx="12" cy="12" r="8.5"/><path d="M9.7 9.8a2.4 2.4 0 1 1 3 2.6v1.4"/><path d="M12.7 17h.01"/>',
+    // 社区公告：喇叭
+    notice: '<path d="M5 9.5v5a2 2 0 0 0 2 2h1.5l8 3.5V6L8.5 9.5H7a2 2 0 0 0-2 2z" transform="translate(0,-1.5)"/>',
+    // 灌水闲聊：对话气泡
+    chat: '<path d="M20 12.5c0 3.6-3.6 6.5-8 6.5a9.8 9.8 0 0 1-2.6-.35L5 21l1.2-3.3A6.2 6.2 0 0 1 4 12.5C4 8.9 7.6 6 12 6s8 2.9 8 6.5z"/>',
+    // 兜底：圆点
+    default: '<circle cx="12" cy="12" r="4"/>',
+};
+
+const BoardIcon = {
+    props: { icon: { type: String, default: '' } },
+    computed: {
+        // 兜底用定位图标，保证任何未知 slug 也有统一观感
+        paths() {
+            return BOARD_ICONS[this.icon] || BOARD_ICONS.default;
+        },
+    },
+    template: `<svg class="board-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
+        v-html="paths" aria-hidden="true"></svg>`,
+};
+
+/* ---------------------------------------------------------------------------
    帖子行组件
    --------------------------------------------------------------------------- */
 const ThreadRow = {
@@ -117,7 +155,7 @@ const AuditResult = {
    应用
    --------------------------------------------------------------------------- */
 createApp({
-    components: { 'thread-row': ThreadRow, 'audit-result': AuditResult },
+    components: { 'thread-row': ThreadRow, 'audit-result': AuditResult, 'board-icon': BoardIcon },
 
     data() {
         return {

@@ -263,7 +263,7 @@ button { font-family: inherit; font-size: inherit; }
 }
 .board-cell {
     display: flex; align-items: flex-start; gap: var(--s4);
-    padding: var(--s4) var(--s4); cursor: pointer;
+    padding: var(--s5) var(--s4); cursor: pointer;
     border: 1px solid var(--line); border-radius: var(--r);
     background: var(--surface); transition: all 0.18s;
 }
@@ -271,15 +271,15 @@ button { font-family: inherit; font-size: inherit; }
     border-color: var(--brand-line); background: var(--brand-soft);
     transform: translateY(-2px); box-shadow: var(--shadow-sm);
 }
-/* 彩色图标底：每个版块一个色系，靠 nth-child 轮转 */
+
+/* 版块标识：统一的线性图标，单色细描边、不加底色。
+   用颜色区分模块会让首页显得花，这里只靠图标形状表意。 */
 .board-icon {
-    width: 52px; height: 52px; border-radius: var(--r); display: grid;
-    place-items: center; font-size: 25px; flex-shrink: 0;
-    background: linear-gradient(140deg, #e8f0ff, #d8e6ff);
+    width: 22px; height: 22px; flex-shrink: 0;
+    color: var(--ink-3); margin-top: 2px;
+    transition: color 0.18s;
 }
-.board-cell:nth-child(4n+2) .board-icon { background: linear-gradient(140deg, #eef0ff, #e0e2ff); }
-.board-cell:nth-child(4n+3) .board-icon { background: linear-gradient(140deg, #e6f9f4, #d2f2e7); }
-.board-cell:nth-child(4n) .board-icon { background: linear-gradient(140deg, #fff3e0, #ffe6c7); }
+.board-cell:hover .board-icon { color: var(--brand); }
 
 .board-info { flex: 1; min-width: 0; }
 .board-name {
@@ -307,12 +307,16 @@ button { font-family: inherit; font-size: inherit; }
 .board-bar a {
     color: var(--ink-2); padding: 7px 15px; border-radius: 999px;
     font-size: 14.5px; white-space: nowrap; font-weight: 600; transition: all 0.15s;
+    display: inline-flex; align-items: center; gap: 6px;
 }
 .board-bar a:hover { background: var(--line-soft); }
 .board-bar a.active {
     background: linear-gradient(135deg, var(--brand), #4b8bff); color: #fff;
     box-shadow: 0 3px 10px rgba(30, 111, 255, 0.28);
 }
+/* 导航条里的图标比首页卡片略小，并跟随文字颜色（选中时为白色） */
+.board-bar .board-icon { width: 16px; height: 16px; margin-top: 0; color: currentColor; }
+.board-bar a.active .board-icon { color: #fff; }
 
 .list-toolbar {
     display: flex; align-items: center; gap: var(--s3); padding: var(--s4) var(--s5);
@@ -558,6 +562,10 @@ button { font-family: inherit; font-size: inherit; }
     font-weight: 500;
 }
 .hot-item:hover { background: var(--brand-soft); color: var(--brand); }
+/* 侧栏版块导航里的图标：小尺寸、跟随文字颜色 */
+.board-nav-item { align-items: center; }
+.board-nav-item .board-icon { width: 16px; height: 16px; margin-top: 0; color: var(--ink-3); }
+.board-nav-item:hover .board-icon { color: var(--brand); }
 .hot-rank {
     width: 21px; height: 21px; border-radius: 6px; background: var(--line-soft);
     color: var(--ink-3); font-size: 12px; font-weight: 800; display: grid;

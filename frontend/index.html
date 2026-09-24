@@ -76,7 +76,7 @@
                 </div>
                 <div class="board-grid" v-if="overview.boards && overview.boards.length">
                     <div v-for="b in overview.boards" :key="b.id" class="board-cell" @click="goBoard(b.slug)">
-                        <div class="board-icon">{{ b.icon }}</div>
+                        <board-icon :icon="b.slug"></board-icon>
                         <div class="board-info">
                             <div class="board-name">{{ b.name }}</div>
                             <div class="board-desc">{{ b.description }}</div>
@@ -176,7 +176,9 @@
                 <div class="board-bar">
                     <a @click="go('/latest')" :class="{ active: !route.board }">全部版块</a>
                     <a v-for="b in boards" :key="b.id" @click="goBoard(b.slug)"
-                       :class="{ active: route.board === b.slug }">{{ b.icon }} {{ b.name }}</a>
+                       :class="{ active: route.board === b.slug }">
+                        <board-icon :icon="b.slug"></board-icon>{{ b.name }}
+                    </a>
                 </div>
                 <div class="list-toolbar">
                     <div class="sort-tabs">
@@ -219,8 +221,8 @@
             <div class="side-card">
                 <div class="side-head">版块导航</div>
                 <div class="hot-list">
-                    <div v-for="b in boards" :key="b.id" class="hot-item" @click="goBoard(b.slug)">
-                        <span>{{ b.icon }}</span>
+                    <div v-for="b in boards" :key="b.id" class="hot-item board-nav-item" @click="goBoard(b.slug)">
+                        <board-icon :icon="b.slug"></board-icon>
                         <span class="u-flex1">{{ b.name }}</span>
                         <span class="u-soft u-fs12">{{ b.thread_count }}</span>
                     </div>
@@ -442,7 +444,7 @@
                     <div class="field">
                         <label>选择版块</label>
                         <select v-model="compose.board">
-                            <option v-for="b in boards" :key="b.id" :value="b.slug">{{ b.icon }} {{ b.name }}</option>
+                            <option v-for="b in boards" :key="b.id" :value="b.slug">{{ b.name }}</option>
                         </select>
                     </div>
                     <div class="field field-title">
